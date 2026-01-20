@@ -1,0 +1,32 @@
+{
+  "name": "tuner-app",
+  "version": "1.0.0",
+  "description": "Afinador de instrumentos - Cuatro Venezolano, Guitarra y Bajo 5 cuerdas",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.14.2",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "generate:icons": "node generate-icons.mjs",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-static": "^3.0.6",
+    "@sveltejs/kit": "^2.9.0",
+    "@sveltejs/vite-plugin-svelte": "^4.0.0",
+    "sharp": "^0.34.5",
+    "svelte": "^5.2.0",
+    "svelte-check": "^4.0.0",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0"
+  },
+  "dependencies": {
+    "pitchy": "^4.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
