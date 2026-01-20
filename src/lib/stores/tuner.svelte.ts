@@ -7,13 +7,8 @@ import { instruments, type Instrument, type StringTuning, isFrequencyInRange, fr
 import { getPitchDetector } from '$audio/pitchDetector';
 import { getAudioEngine } from '$audio/audioEngine';
 
-interface CalibrationOffsets {
-	[instrumentId: string]: Record<string, number>;
-}
-
 interface PersistedTunerSettings {
 	strictModeEnabled: boolean;
-	calibrationOffsets: CalibrationOffsets;
 }
 
 export interface TunerState {
@@ -38,7 +33,6 @@ export interface TunerState {
 	rawFrequency: number;
 	// Ajustes
 	strictModeEnabled: boolean;
-	calibrationOffsets: CalibrationOffsets;
 }
 
 const SETTINGS_STORAGE_KEY = 'tuner.settings.v1';
@@ -46,34 +40,18 @@ const STRICT_MODE_INSTRUMENT_ID = 'cuatro';
 const HARMONIC_TOLERANCE = 0.06;
 const MAX_HARMONIC = 4;
 const TARGET_CENTS_WINDOW = 50;
+const CUATRO_INHARMONICITY = 0.0002;
+const CUATRO_TARGET_CENTS_WINDOW = 150;
 
-function buildDefaultCalibrationOffsets(): CalibrationOffsets {
-	const offsets: CalibrationOffsets = {};
-	instruments.forEach((instrument) => {
-		offsets[instrument.id] = {};
-		instrument.strings.forEach((string) => {
-			offsets[instrument.id][string.note] = 0;
-		});
-	});
-	return offsets;
-}
-
-function mergeCalibrationOffsets(
-	base: CalibrationOffsets,
-	incoming?: CalibrationOffsets
-): CalibrationOffsets {
-	if (!incoming) return base;
-	const merged: CalibrationOffsets = {};
-	Object.keys(base).forEach((instrumentId) => {
-		merged[instrumentId] = { ...base[instrumentId], ...(incoming[instrumentId] ?? {}) };
-	});
-	return merged;
+function getTargetCentsWindow(instrumentId: string): number {
+	return instrumentId === STRICT_MODE_INSTRUMENT_ID
+		? CUATRO_TARGET_CENTS_WINDOW
+		: TARGET_CENTS_WINDOW;
 }
 
 function loadPersistedSettings(): PersistedTunerSettings {
 	const defaults: PersistedTunerSettings = {
-		strictModeEnabled: true,
-		calibrationOffsets: buildDefaultCalibrationOffsets()
+		strictModeEnabled: true
 	};
 
 	if (typeof localStorage === 'undefined') {
@@ -87,11 +65,7 @@ function loadPersistedSettings(): PersistedTunerSettings {
 		return {
 			strictModeEnabled: typeof parsed.strictModeEnabled === 'boolean'
 				? parsed.strictModeEnabled
-				: defaults.strictModeEnabled,
-			calibrationOffsets: mergeCalibrationOffsets(
-				defaults.calibrationOffsets,
-				parsed.calibrationOffsets
-			)
+				: defaults.strictModeEnabled
 		};
 	} catch {
 		return defaults;
@@ -155,8 +129,7 @@ function createTunerStore() {
 		isInRange: false,
 		hasValidSignal: false,
 		rawFrequency: 0,
-		strictModeEnabled: persistedSettings.strictModeEnabled,
-		calibrationOffsets: persistedSettings.calibrationOffsets
+		strictModeEnabled: persistedSettings.strictModeEnabled
 	});
 
 	applyInstrumentAudioConfig(state.selectedInstrument);
@@ -172,8 +145,7 @@ function createTunerStore() {
 
 	function persistCurrentSettings() {
 		persistSettings({
-			strictModeEnabled: state.strictModeEnabled,
-			calibrationOffsets: state.calibrationOffsets
+			strictModeEnabled: state.strictModeEnabled
 		});
 	}
 
@@ -186,27 +158,30 @@ function isStrictModeEnabledForInstrument(): boolean {
 
 function normalizeToTargetFrequency(
 	frequency: number,
-	targetFrequency: number
+	targetFrequency: number,
+	instrumentId: string
 ): number {
 		if (frequency <= 0 || targetFrequency <= 0) return frequency;
 		const ratio = frequency / targetFrequency;
 		const nearest = Math.round(ratio);
 		if (nearest >= 2 && nearest <= MAX_HARMONIC) {
 			if (Math.abs(ratio - nearest) <= HARMONIC_TOLERANCE) {
-				return frequency / nearest;
+				return applyInharmonicityCorrection(frequency, nearest, instrumentId);
 			}
 		}
 		return frequency;
 }
 
-function getCalibrationOffsetForString(string: StringTuning | null): number {
-	if (!string) return 0;
-	return state.calibrationOffsets[state.selectedInstrument.id]?.[string.note] ?? 0;
-}
-
-function getCalibratedFrequency(string: StringTuning): number {
-	const offset = getCalibrationOffsetForString(string);
-	return string.frequency * Math.pow(2, offset / 1200);
+function applyInharmonicityCorrection(
+	frequency: number,
+	harmonic: number,
+	instrumentId: string
+): number {
+	if (harmonic <= 1 || instrumentId !== STRICT_MODE_INSTRUMENT_ID) {
+		return frequency / harmonic;
+	}
+	const factor = Math.sqrt(1 + CUATRO_INHARMONICITY * harmonic * harmonic);
+	return frequency / (harmonic * factor);
 }
 
 function resolveReferenceString(
@@ -216,8 +191,7 @@ function resolveReferenceString(
 	let bestMatch: { string: StringTuning; normalizedFrequency: number; cents: number } | null = null;
 
 	for (const string of state.selectedInstrument.strings) {
-		const calibratedFrequency = getCalibratedFrequency(string);
-		const ratio = frequency / calibratedFrequency;
+		const ratio = frequency / string.frequency;
 		const nearest = Math.round(ratio);
 		const harmonic =
 			nearest >= 2 &&
@@ -225,10 +199,14 @@ function resolveReferenceString(
 			Math.abs(ratio - nearest) <= HARMONIC_TOLERANCE
 				? nearest
 				: 1;
-		const normalizedFrequency = frequency / harmonic;
+		const normalizedFrequency = applyInharmonicityCorrection(
+			frequency,
+			harmonic,
+			state.selectedInstrument.id
+		);
 		if (!isFrequencyInRange(normalizedFrequency, state.selectedInstrument)) continue;
-		const cents = 1200 * Math.log2(normalizedFrequency / calibratedFrequency);
-		if (Math.abs(cents) > TARGET_CENTS_WINDOW) continue;
+		const cents = 1200 * Math.log2(normalizedFrequency / string.frequency);
+		if (Math.abs(cents) > getTargetCentsWindow(state.selectedInstrument.id)) continue;
 		if (!bestMatch || Math.abs(cents) < Math.abs(bestMatch.cents)) {
 			bestMatch = { string, normalizedFrequency, cents };
 		}
@@ -289,31 +267,6 @@ function resolveReferenceString(
 		persistCurrentSettings();
 	}
 
-	function setCalibrationOffset(
-		instrumentId: string,
-		stringNote: string,
-		offsetCents: number
-	) {
-		const instrumentOffsets = state.calibrationOffsets[instrumentId] ?? {};
-		state.calibrationOffsets = {
-			...state.calibrationOffsets,
-			[instrumentId]: {
-				...instrumentOffsets,
-				[stringNote]: offsetCents
-			}
-		};
-		persistCurrentSettings();
-	}
-
-	function resetCalibrationOffsets(instrumentId: string) {
-		const defaults = buildDefaultCalibrationOffsets();
-		state.calibrationOffsets = {
-			...state.calibrationOffsets,
-			[instrumentId]: defaults[instrumentId] ?? {}
-		};
-		persistCurrentSettings();
-	}
-
 	function updatePitch(frequency: number, clarity: number, decibels: number) {
 		const now = Date.now();
 		state.rawFrequency = frequency;
@@ -327,15 +280,10 @@ function resolveReferenceString(
 			? resolveReferenceString(frequency)
 			: null;
 		const effectiveTarget = manualTarget ?? autoMatch?.string ?? null;
-		const calibratedTargetFrequency = effectiveTarget
-			? getCalibratedFrequency(effectiveTarget)
-			: null;
 		const normalizedFrequency = manualTarget
-			? normalizeToTargetFrequency(
-				frequency,
-				calibratedTargetFrequency ?? manualTarget.frequency
-			)
+			? normalizeToTargetFrequency(frequency, manualTarget.frequency, state.selectedInstrument.id)
 			: autoMatch?.normalizedFrequency ?? frequency;
+		const centsWindow = getTargetCentsWindow(state.selectedInstrument.id);
 
 		const frequencyForRange = normalizedFrequency;
 
@@ -364,23 +312,20 @@ function resolveReferenceString(
 			let detectedOctave = 0;
 			let detectedCents = 0;
 
-			if (effectiveTarget) {
-				const targetNote = parseStringNote(effectiveTarget);
-				const rawCents = autoMatch
-					? autoMatch.cents
-					: 1200 * Math.log2(
-						frequencyForRange / (calibratedTargetFrequency ?? effectiveTarget.frequency)
-					);
-
-				if (manualTarget && Math.abs(rawCents) > TARGET_CENTS_WINDOW) {
-					clearInvalidSignal(now);
-					return;
-				}
-
-				const clampedCents = Math.max(
-					-TARGET_CENTS_WINDOW,
-					Math.min(TARGET_CENTS_WINDOW, rawCents)
+		if (effectiveTarget) {
+			const targetNote = parseStringNote(effectiveTarget);
+			const rawCents = autoMatch
+				? autoMatch.cents
+				: 1200 * Math.log2(
+					frequencyForRange / effectiveTarget.frequency
 				);
+
+			if (manualTarget && Math.abs(rawCents) > centsWindow) {
+				clearInvalidSignal(now);
+				return;
+			}
+
+			const clampedCents = Math.max(-centsWindow, Math.min(centsWindow, rawCents));
 
 				detectedNote = targetNote.note;
 				detectedOctave = targetNote.octave;
@@ -577,11 +522,9 @@ function resolveReferenceString(
 		let minDiff = Infinity;
 
 		for (const string of state.selectedInstrument.strings) {
-			const offset = getCalibrationOffsetForString(string);
-			const calibratedFrequency = string.frequency * Math.pow(2, offset / 1200);
-			const diff = Math.abs(frequency - calibratedFrequency);
+			const diff = Math.abs(frequency - string.frequency);
 			// Solo considerar si está dentro del 15% de la frecuencia
-			const tolerance = calibratedFrequency * 0.15;
+			const tolerance = string.frequency * 0.15;
 			if (diff < minDiff && diff < tolerance) {
 				minDiff = diff;
 				closest = string;
@@ -602,9 +545,6 @@ function resolveReferenceString(
 		setInstrument,
 		setTargetString,
 		setStrictModeEnabled,
-		setCalibrationOffset,
-		resetCalibrationOffsets,
-		getCalibrationOffsetForString,
 		updatePitch,
 		updateVolume,
 		setListening,

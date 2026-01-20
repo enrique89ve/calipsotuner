@@ -8,7 +8,7 @@ Afinador profesional web para Cuatro Venezolano, Guitarra y Bajo con configuraci
 - 🪕 **Cuatro Venezolano** - Afinación estándar (LA-RE-FA-SI) y alternativa (SOL-DO-MI-LA)
 - 🎸 **Guitarra** - Afinación estándar EADGBE (6 cuerdas)
 - 🎸 **Bajo 5 cuerdas** - Afinación estándar BEADG
-- 🔧 **Calibración personalizable** - Ajusta A4 de 432Hz a 448Hz
+- 🎚️ **Referencia fija** - Todas las afinaciones en A4 = 440 Hz
 - 📱 **Mobile-First** - iOS/Android optimizado, baja latencia, gestos nativos
 - 🌙 **Modo oscuro** - Estilo minimalista y profesional, diseño responsive
 - ⚡ **Progressive Web App (PWA)** - Funciona offline, instalable en home screen
