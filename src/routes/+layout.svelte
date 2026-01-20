@@ -18,6 +18,9 @@
 	<title>Calipso Tuner - Afinador Profesional para Cuatro, Guitarra y Bajo</title>
 	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 	<meta name="theme-color" content="#0a0a0a">
+	<meta name="mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 	<meta name="description" content="Afinador profesional para Cuatro Venezolano, Guitarra y Bajo. Configuración especializada para el Cuatro Venezolano con afinación estándar y alternativa.">
 	<meta name="keywords" content="afinador, cuatro venezolano, guitarra, bajo, afinación, tuner, calipso, instrumentos musicales">
 	<meta name="author" content="EnriqueVee">
@@ -37,6 +40,7 @@
 
 	<!-- Apple touch icon -->
 	<link rel="apple-touch-icon" href="/icons/icon-192x192.png">
+	<link rel="manifest" href="/manifest.json">
 
 	<!-- Favicon -->
 	<link rel="icon" type="image/png" href="/icons/icon-32x32.png" sizes="32x32">
